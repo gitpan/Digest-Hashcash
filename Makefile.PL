@@ -10,5 +10,9 @@ WriteMakefile(
 	           },
     NAME => "Digest::Hashcash",
     VERSION_FROM => "Hashcash.pm",
+    PREREQ_PM   => {
+       Time::HiRes => 1.2,
+       Time::Local => 0,
+    },
 );
 

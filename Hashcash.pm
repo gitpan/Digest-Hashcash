@@ -23,20 +23,60 @@ compiler that supports ISO C, get gcc at http://gcc.gnu.org/ :)
 package Digest::Hashcash;
 
 use Time::Local;
+use Time::HiRes;
 
 require XSLoader;
 
 no warnings;
 
-$VERSION = 0.01;
+$VERSION = 0.02;
 
 XSLoader::load Digest::Hashcash, $VERSION;
+
+=item $secs = estimate_time $size
+
+Estimate the average time necessary to calculate a token of the given
+size.
+
+See also C<estimate_size>.
+
+=item $size = estimate_size $time[, $min]
+
+Estimate the size that can be calculated in the given time (which is an
+upper bound). The function will not return a size less then C<min>.
+
+Estimating the time to be used can go wrong by as much as 50% (but is
+usually quite accurate), and the estimation itself can take as much as a
+second on slower (<pentium) machines, but faster machines (1Ghz P3 for
+example) usually handle it within a hundredth of a second or so.
+
+The estimation will be done only once, so you can call this fucntion as
+often as you like without incuring the overhead everytime.
+
+=cut
+
+my $rounds;
+
+sub _rounds {
+   $rounds ||= &_estimate_rounds();
+}
+
+sub estimate_time {
+   my ($size) = @_;
+   2**$size / &_rounds;
+}
+
+sub estimate_size {
+   my ($time, $min) = @_;
+   $time = (log $time * $rounds) / log 2;
+   $time < $min ? $min : int $time;
+}
 
 =item $cipher = new [param => value...]
 
 =over 4
 
-=item size => 20 + some
+=item size => 18
 
 The number of collisions, in bits. Every bit increases the time to create
 the token (and thus the cash) by two.
