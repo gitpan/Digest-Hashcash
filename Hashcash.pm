@@ -29,7 +29,7 @@ require XSLoader;
 
 no warnings;
 
-$VERSION = 0.02;
+$VERSION = 0.03;
 
 XSLoader::load Digest::Hashcash, $VERSION;
 
@@ -72,7 +72,7 @@ sub estimate_size {
    $time < $min ? $min : int $time;
 }
 
-=item $cipher = new [param => value...]
+=item $cipher = new Digest::Hashcash [param => value...]
 
 =over 4
 
@@ -103,14 +103,14 @@ time.
 
 =back
 
-=item $token = $cipher->hash($data [, param => value...])
+=item $token = $cipher->hash ($data [, param => value...])
 
 Creates and returns a new token. This can take some time.
 
 Any additional parameters are interpreted the same way as arguments to
 C<new>.
 
-=item $prefix = $cipher->verify($token [, param => value...]))
+=item $prefix = $cipher->verify ($token [, param => value...]))
 
 Checks the given token and returns true if the token has the minimum
 number of prefix bits, or false otherwise.  The value returned is actually
@@ -120,11 +120,11 @@ C<< collisions => 0 >>.
 Any additional parameters are interpreted the same way as arguments to
 C<new>.
 
-=item $resource = $cipher->resource($token)
+=item $resource = $cipher->resource ($token)
 
 Returns the resource part, or C<undef>.
 
-=item $tstamp = $ciper->timestamp($token)
+=item $tstamp = $ciper->timestamp ($token)
 
 Returns the timestamp part (in the same format as perl's C<time>), or
 C<undef>.
@@ -192,11 +192,11 @@ L<http://www.hashcash.org>.
 
  * There is a y2k+100 problem, as I always assume the same as Time::Local.
    This is a problem with the hashcash specification, which specifies
-   yeras as 2 digits :(
+   years as 2 digits :(
 
 =head1 AUTHOR
 
- Marc Lehmann <pcg@goof.com>
+ Marc Lehmann <schmorp@schmorp.de>
  http://home.schmorp.de
 
 =cut

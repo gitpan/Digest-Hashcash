@@ -21,6 +21,11 @@
  * it here and there, though.
  */
 
+/*
+ * we have lots of micro-optimizations here, this is just for toying
+ * around...
+ */
+
 /* don't expect _too_ much from compilers for now. */
 #if __GNUC__ > 2
 #  define restrict __restrict__
@@ -33,25 +38,39 @@
 #  define inline
 #endif
 
+#if __GNUC__ < 2
+#  define __attribute__(x)
+#endif
+
+#ifdef __i386
+#  define a_regparm(n) __attribute__((__regparm__(n)))
+#else
+#  define a_regparm(n)
+#endif
+
+#define a_const __attribute__((__const__))
+
 /* Useful defines & typedefs */
 
 #if defined(U64TYPE) && (defined(USE_64_BIT_INT) || ((BYTEORDER != 0x1234) && (BYTEORDER != 0x4321)))
 typedef U64TYPE ULONG;
-# if BYTEORDER == 0x1234
-#   undef BYTEORDER
-#   define BYTEORDER 0x12345678
-# elif BYTEORDER == 0x4321
-#   undef BYTEORDER
-#   define BYTEORDER 0x87654321   
-# endif
+#  if BYTEORDER == 0x1234
+#    undef BYTEORDER
+#    define BYTEORDER 0x12345678
+#  elif BYTEORDER == 0x4321
+#    undef BYTEORDER
+#    define BYTEORDER 0x87654321   
+#  endif
 #else
 typedef uint_fast32_t ULONG;     /* 32-or-more-bit quantity */
 #endif
 
 #if GCCX86ASM
 #  define zprefix(n) ({ int _r; __asm__ ("bsrl %1, %0" : "=r" (_r) : "r" (n)); 31 - _r ; })
+#elif __GNUC__ > 2 && __GNUC_MINOR__ > 3
+#  define zprefix(n) (__extension__ ({ uint32_t n__ = (n); n ? __builtin_clz (n) : 32; }))
 #else
-static int zprefix (ULONG n)
+static int a_const zprefix (ULONG n)
 {
   static char zp[256] =
     {
@@ -129,10 +148,10 @@ typedef struct {
 #define FT(n)	\
     A = T32(R32(B,5) + f##n(C,D,E) + T + *WP++ + CONST##n); C = R32(C,30)
 
-static void sha_transform(SHA_INFO *restrict sha_info)
+static void a_regparm(1) sha_transform(SHA_INFO *restrict sha_info)
 {
     int i;
-    U8 *dp;
+    U8 *restrict dp;
     ULONG T, A, B, C, D, E, W[80], *restrict WP;
 
     dp = sha_info->data;
@@ -326,6 +345,7 @@ PROTOTYPES: ENABLE
 NV
 _estimate_rounds ()
 	CODE:
+{
         char data[40];
         NVTime nvtime = get_nvtime ();
         NV t1, t2, t;
@@ -350,12 +370,14 @@ _estimate_rounds ()
         } while (t == t2);
 
         RETVAL = (NV)count / (t2 - t1);
+}
         OUTPUT:
         RETVAL
 
 SV *
 _gentoken (int size, IV timestamp, char *resource, char *trial = "", int extrarand = 0)
 	CODE:
+{
         SHA_INFO ctx1, ctx;
         char *token, *seq, *s;
         int toklen, i;
@@ -363,12 +385,12 @@ _gentoken (int size, IV timestamp, char *resource, char *trial = "", int extrara
         struct tm *tm = gmtime (&tstamp);
 
         New (0, token,
-            1 + 1                    // version
-            + 12 + 1                 // time field sans century
-            + strlen (resource) + 1  // ressource
-            + strlen (trial) + extrarand + 8 + 1 // trial
-            + 1,
-            char);
+             1 + 1                    // version
+             + 12 + 1                 // time field sans century
+             + strlen (resource) + 1  // ressource
+             + strlen (trial) + extrarand + 8 + 1 // trial
+             + 1,
+             char);
 
         if (!token)
           croak ("out of memory");
@@ -412,12 +434,14 @@ _gentoken (int size, IV timestamp, char *resource, char *trial = "", int extrara
           }
 
         RETVAL = newSVpvn (token, toklen);
+}
 	OUTPUT:
         RETVAL
 
 int
 _prefixlen (SV *tok)
 	CODE:
+{
         STRLEN toklen;
         char *token = SvPV (tok, toklen);
         SHA_INFO ctx;
@@ -425,6 +449,7 @@ _prefixlen (SV *tok)
         sha_init (&ctx);
         sha_update (&ctx, token, toklen);
         RETVAL = sha_final (&ctx);
+}
 	OUTPUT:
 	RETVAL
 

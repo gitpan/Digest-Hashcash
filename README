@@ -33,7 +33,7 @@ DESCRIPTION
         The estimation will be done only once, so you can call this fucntion
         as often as you like without incuring the overhead everytime.
 
-    $cipher = new [param => value...]
+    $cipher = new Digest::Hashcash [param => value...]
 
         size => 18
             The number of collisions, in bits. Every bit increases the time
@@ -57,13 +57,13 @@ DESCRIPTION
             The timestamp to use. A value of 0 (the default) means to use
             the current time.
 
-    $token = $cipher->hash($data [, param => value...])
+    $token = $cipher->hash ($data [, param => value...])
         Creates and returns a new token. This can take some time.
 
         Any additional parameters are interpreted the same way as arguments
         to "new".
 
-    $prefix = $cipher->verify($token [, param => value...]))
+    $prefix = $cipher->verify ($token [, param => value...]))
         Checks the given token and returns true if the token has the minimum
         number of prefix bits, or false otherwise. The value returned is
         actually the number of collisions, so to find the number of
@@ -72,10 +72,10 @@ DESCRIPTION
         Any additional parameters are interpreted the same way as arguments
         to "new".
 
-    $resource = $cipher->resource($token)
+    $resource = $cipher->resource ($token)
         Returns the resource part, or "undef".
 
-    $tstamp = $ciper->timestamp($token)
+    $tstamp = $ciper->timestamp ($token)
         Returns the timestamp part (in the same format as perl's "time"), or
         "undef".
 
@@ -85,9 +85,9 @@ SEE ALSO
 BUGS
      * There is a y2k+100 problem, as I always assume the same as Time::Local.
        This is a problem with the hashcash specification, which specifies
-       yeras as 2 digits :(
+       years as 2 digits :(
 
 AUTHOR
-     Marc Lehmann <pcg@goof.com>
+     Marc Lehmann <schmorp@schmorp.de>
      http://home.schmorp.de
 
