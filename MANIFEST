@@ -1,0 +1,9 @@
+README
+Changes
+MANIFEST
+COPYING
+Makefile.PL
+Hashcash.pm
+Hashcash.xs
+t/00_load.t
+META.yml                                Module meta-data in YAML

@@ -1,0 +1,5 @@
+Revision history for Perl extension Digest::Hashcash
+
+0.01  Sat Sep  6 17:10:40 CEST 2003
+	- original version; cloned from Crypt::Twofish2
+
