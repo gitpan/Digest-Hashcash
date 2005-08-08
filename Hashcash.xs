@@ -302,13 +302,143 @@ static int sha_final(SHA_INFO *sha_info)
            : zprefix (sha_info->digest[1]) + 32;
 }
 
-#define TRIALCHAR "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&()*+,-./;<=>?@[]{}^_|"
+#define TRIALCHAR "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/"
+
+/* sizeof includes \0 */
+#define TRIALLEN ( sizeof (TRIALCHAR) -1 ) 
 
 static char       nextenc[256];
 
+/* on machines that have /dev/urandom -- use it */
+
+#if defined( __linux__ ) || defined( __FreeBSD__ ) || defined( __MACH__ ) || \
+    defined( __OpenBSD__ ) || defined( DEV_URANDOM )
+
+#define URANDOM_FILE "/dev/urandom"
+FILE* urandom = NULL;
+int initialized = 0;
+
+int random_init( void )
+{
+    int res = (urandom = fopen( URANDOM_FILE, "r" )) != NULL;
+    if ( res ) { initialized = 1; }
+    return res;
+}
+
+int random_getbytes( void* data, size_t len )
+{
+    if ( !initialized && !random_init() ) { return 0; }
+    return fread( data, len, 1, urandom );
+}
+
+int random_final( void )
+{
+    int res = 0;
+    if ( urandom ) { res = (fclose( urandom ) == 0); }
+    return res;
+}
+
+#else
+
+#if defined( unix ) || defined( VMS )
+    #include <unistd.h>
+    #include <sys/time.h>
+#elif defined( WIN32 )
+    #include <process.h>
+    #include <windows.h>
+    #include <wincrypt.h>
+    #include <sys/time.h>
+#else
+    #include <time.h>
+#endif
+#include <time.h>
+
+#if defined( WIN32 )
+    #define pid_t int
+    typedef BOOL (WINAPI *CRYPTACQUIRECONTEXT)(HCRYPTPROV *, LPCTSTR, LPCTSTR,
+					       DWORD, DWORD);
+    typedef BOOL (WINAPI *CRYPTGENRANDOM)(HCRYPTPROV, DWORD, BYTE *);
+    typedef BOOL (WINAPI *CRYPTRELEASECONTEXT)(HCRYPTPROV, DWORD);
+    HCRYPTPROV hProvider = 0;
+    CRYPTRELEASECONTEXT release = 0;
+    CRYPTGENRANDOM gen = 0;
+#endif
+
+#define byte unsigned char
+
+byte state[ SHA1_DIGEST_BYTES ];
+byte output[ SHA1_DIGEST_BYTES ];
+long counter = 0;
+int left = 0;
+
+/* output = SHA1( input || time || pid || counter++ ) */
+
+static void random_stir( const byte input[SHA1_DIGEST_BYTES],
+			 byte output[SHA1_DIGEST_BYTES] )
+{
+    SHA1_ctx sha1;
+#if defined(__unix__) || defined(WIN32)
+    pid_t pid = getpid();
+#else
+    unsigned long pid = rand();
+#endif
+    NVTime nvtime = get_nvtime ();
+    NV timer;
+#if defined(WIN32)
+    SYSTEMTIME tw;
+    BYTE buf[64];
+#endif
+    clock_t t = clock();
+    time_t t2 = time(0);
+
+    SHA1_Init( &sha1 );
+#if defined(__unix__)
+    gettimeofday(&tv,&tz);
+    SHA1_Update( &sha1, &tv, sizeof( tv ) );
+    SHA1_Update( &sha1, &tz, sizeof( tz ) );
+#elif defined(WIN32)
+    GetSystemTime(&tw);
+    SHA1_Update( &sha1, &tw, sizeof( tw ) );    
+    if ( gen ) {
+	if (gen(hProvider, sizeof(buf), buf)) {
+	    SHA1_Update( &sha1, buf, sizeof(buf) );
+	}
+    }
+#endif
+    SHA1_Update( &sha1, input, SHA1_DIGEST_BYTES );
+    SHA1_Update( &sha1, &t, sizeof( clock_t ) );
+    SHA1_Update( &sha1, &t2, sizeof( time_t ) );
+    SHA1_Update( &sha1, &pid, sizeof( pid ) );
+    SHA1_Update( &sha1, &counter, sizeof( long ) );
+
+    SHA1_Final( &sha1, output );
+    counter++;
+}
+
+byte rand_pool[SHA1_DIGEST_BYTES];
+
+int random_getbytes( void* data, size_t len )
+{
+    char* dptr = data;
+    int use;
+    while ( left < len ) {
+	if ( left == 0 ) {
+	    random_stir( rand_pool, rand_pool );
+	}
+	use = MIN( left, len );
+	memcpy( dptr, rand_pool+SHA1_DIGEST_BYTES-left, use );
+	left -= use;
+	len -= use;
+    }
+    return 1;
+}
+#endif
+
 static char rand_char ()
 {
-  return TRIALCHAR[rand () % sizeof (TRIALCHAR)];
+    char b;
+    random_getbytes( &b, 1 );
+    return TRIALCHAR[b % TRIALLEN];
 }
 
 typedef double (*NVTime)(void);
@@ -335,8 +465,8 @@ BOOT:
 {
    int i;
 
-   for (i = 0; i < sizeof (TRIALCHAR); i++)
-     nextenc[TRIALCHAR[i]] = TRIALCHAR[(i + 1) % sizeof (TRIALCHAR)];
+   for (i = 0; i < TRIALLEN; i++)
+     nextenc[TRIALCHAR[i]] = TRIALCHAR[(i + 1) % TRIALLEN];
 }
 
 PROTOTYPES: ENABLE
@@ -375,22 +505,37 @@ _estimate_rounds ()
         RETVAL
 
 SV *
-_gentoken (int size, IV timestamp, char *resource, char *trial = "", int extrarand = 0)
+_gentoken (int size, int vers, IV timestamp, char *resource, char* extension = "", char *trial = "", int extrarand = 0)
 	CODE:
 {
         SHA_INFO ctx1, ctx;
         char *token, *seq, *s;
-        int toklen, i;
+        int toklen, i, j;
         time_t tstamp = timestamp ? timestamp : time (0);
         struct tm *tm = gmtime (&tstamp);
 
-        New (0, token,
-             1 + 1                    // version
-             + 12 + 1                 // time field sans century
-             + strlen (resource) + 1  // ressource
-             + strlen (trial) + extrarand + 8 + 1 // trial
-             + 1,
-             char);
+	if ( vers == 0 ) {
+          New (0, token,
+               1 + 1                    // version
+               + 12 + 1                 // time field sans century
+               + strlen (resource) + 1  // ressource
+               + strlen (trial) + extrarand + 8 + 1 // trial
+               + 1,
+               char);
+	} else if ( vers == 1 ) {
+          New (0, token,
+               1 + 1                    // version
+	       + ((size > 9) ? 2 : 1) + 1 // bits
+               + 12 + 1                 // time field sans century
+               + strlen (resource) + 1  // resource
+	       + strlen (extension) + 1 // extension
+               + strlen (trial) + extrarand + 12 + 1 // trial
+	       + 16 + 1 		// count
+               + 1,
+               char);
+	} else {
+	  croak ("unsupported version");
+	}
 
         if (!token)
           croak ("out of memory");
@@ -398,10 +543,18 @@ _gentoken (int size, IV timestamp, char *resource, char *trial = "", int extrara
         if (size > 64)
           croak ("size must be <= 64 in this implementation\n");
 
-        toklen = sprintf (token, "%d:%02d%02d%02d%02d%02d%02d:%s:%s",
+      again:  /* try again */
+	if ( vers == 0 ) { 
+          toklen = sprintf (token, "%d:%02d%02d%02d%02d%02d%02d:%s:%s",
                           0, tm->tm_year % 100, tm->tm_mon + 1, tm->tm_mday,
                           tm->tm_hour, tm->tm_min, tm->tm_sec,
                           resource, trial);
+	} else {
+          toklen = sprintf (token,"%d:%d:%02d%02d%02d%02d%02d%02d:%s:%s:%s",
+                          1, size, tm->tm_year % 100, tm->tm_mon + 1, 
+			  tm->tm_mday,tm->tm_hour, tm->tm_min, tm->tm_sec,
+                          resource, extension, trial);
+        }
 
         if (toklen > 8000)
           croak ("token length must be <= 8000 in this implementation\n");
@@ -410,29 +563,61 @@ _gentoken (int size, IV timestamp, char *resource, char *trial = "", int extrara
         while (toklen < i)
           token[toklen++] = rand_char ();
 
+	if ( vers == 1 ) {
+	  i +=  16;
+          while (toklen < i)
+            token[toklen++] = rand_char ();
+	  token[toklen++] = ':';
+	}
+
         sha_init (&ctx1);
         sha_update (&ctx1, token, toklen);
 
         seq = token + toklen;
-        i +=  8;
-        while (toklen < i)
-          token[toklen++] = rand_char ();
+        if ( vers == 0 ) {
+          i += 16;
+          while (toklen < i)
+            token[toklen++] = rand_char ();
 
-        for (;;)
-          {
-            ctx = ctx1; // this "optimization" can help a lot for longer resource strings
-            sha_update (&ctx, seq, 8);
-            i = sha_final (&ctx);
+          for (;;)
+            {  // this "optimization" can help a lot for longer resource strings
+              ctx = ctx1; 
+              sha_update (&ctx, seq, 16);
+              i = sha_final (&ctx);
 
-            if (i >= size)
-              break;
+              if (i >= size)
+		goto done;
 
-            s = seq;
-            do {
-              *s = nextenc [*s];
-            } while (*s++ == 'a');
-          }
+              s = seq;
+              do {
+                *s = nextenc [*s];
+              } while (*s++ == 'a');
+            }
+        } else {
+	  for ( j = 1; j <= 12; j++ ) 
+            {
+	      memset (seq, 'a', j);
+	      seq[j] = '\0';
+	      s = seq+j-1;
+	      for ( ; s-seq >= 0; ) {
+		s = seq+j-1;
+		ctx = ctx1;
+	        sha_update (&ctx, seq, j);
+	        i = sha_final (&ctx);
+		
+		if (i >= size) { 
+		  toklen += j;
+		  goto done; 
+		}
 
+		do {
+		  *s = nextenc [*s];
+		} while ( *s == 'a' && s-- && s-seq >=0 );
+	      }
+            }
+	  goto again;
+        }
+      done:
         RETVAL = newSVpvn (token, toklen);
 }
 	OUTPUT:
@@ -452,5 +637,3 @@ _prefixlen (SV *tok)
 }
 	OUTPUT:
 	RETVAL
-
-

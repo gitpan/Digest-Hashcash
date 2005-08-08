@@ -1,4 +1,4 @@
-BEGIN { $| = 1; print "1..181\n"; }
+BEGIN { $| = 1; print "1..174\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Digest::Hashcash;
 $loaded = 1;
@@ -32,38 +32,9 @@ print $c->verify ("0:030907:taz:3e0374e8cb3d95a7") == 20 ? "ok 12\n" : "not ok 1
 print $c->verify ("0:030907:tazhashcashhashcashhashcashhashcashhashcashhashcashhashcashhashcashhashcashhashcashhashcashhashcashhashcash:89e748cf94ef1871") == 20 ? "ok 13\n" : "not ok 13\n";
 
 $c = new Digest::Hashcash size => 50;
+$t = 14;
 
-my $token = $c->hash( 'adam@cypherspace.org', extension => "foo=var=2,taz=bar;bar;zap=;add=1;zz=a=b,b=2,xx=1,2,3", size => 10 );
-
-%ext = $c->extension( $token );
-print exists( $ext{"foo"} ) ? "ok 14\n" : "not ok 14\n";
-print exists( $ext{"bar"} ) && !defined( $ext{"bar"} ) ? "ok 15\n" : "not ok 15\n";
-print exists( $ext{"zap"} ) && defined( $ext{"zap"} ) ? "ok 16\n" : "not ok 16\n";
-
-%ext = $c->extension( $token, "foo" );
-print exists( $ext{"var"} ) && $ext{"var"} eq "2" ? "ok 17\n" : "not ok 17\n";
-print exists( $ext{"taz"} ) && $ext{"taz"} eq "bar" ? "ok 18\n" : "not ok 18\n";
-
-$ext = $c->extension( $token, "foo", "taz" );
-print $ext eq "bar" ? "ok 19\n" : "not ok 19\n";
-
-$t = 20;
-
-for (0 .. 80) {
-   my $token = $c->hash ("x" x $_, extrarand => $_ / 4, size => 10);
-   $c->verify ($token, size => 10) or print "not ";
-   print "ok $t\n";
-   $t++;
-}
-
-# test version 0 stamps also
-
-$c = new Digest::Hashcash
-    size => 16, 
-    uid => "adam\@cypherspace.org", 
-    version => 0;
-
-for (0 .. 80) {
+for (0 .. 160) {
    my $token = $c->hash ("x" x $_, extrarand => $_ / 4, size => 10);
    $c->verify ($token, size => 10) or print "not ";
    print "ok $t\n";

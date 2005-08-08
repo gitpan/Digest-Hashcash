@@ -1,5 +1,15 @@
 Revision history for Perl extension Digest::Hashcash
 
+0.04  Tue Aug  2 2005
+	- changes from Jason to verify version 1 stamps
+	- more changes from Adam Back: code to create version 1 stamps;
+	  associated methods for v1 stamps: extension(), version()
+	- create v1 stamps by default
+	- fix some bugs (hash method was ignoring arguments)
+	- add extension parsing
+	- fix randomness (earlier versions using rand(3))
+	- add version1 extension tests
+
 0.03  Thu Mar  3 18:00:52 CET 2005
 	- generate more efficient code with gcc-3.4 and later.
         - change of contact address.
@@ -9,4 +19,3 @@ Revision history for Perl extension Digest::Hashcash
 
 0.01  Sat Sep  6 17:10:40 CEST 2003
 	- original version; cloned from Crypt::Twofish2
-

@@ -1,5 +1,5 @@
 NAME
-    Digest::Hashcash - generate Hashcashes (http://www.hashcash.org)
+    Digest::Hashcash - generate Hashcash stamps (http://www.hashcash.org)
 
 SYNOPSIS
      use Digest::Hashcash;
@@ -35,15 +35,20 @@ DESCRIPTION
 
     $cipher = new Digest::Hashcash [param => value...]
 
-        size => 18
+        size => 20
             The number of collisions, in bits. Every bit increases the time
             to create the token (and thus the cash) by two.
+
+        vers => 1
+            Default version 1. Can produce version 0 if required for
+            backwards compatibility.
 
         uid => ""
             A string used to make the token more unique (e.g. the senders
             address) and reduce token collisions. The string must only
             contain characters valid for the trial part of the token, e.g.
             uuencoded, base64 or e-mail-address-parts are useful here.
+            Deprecated: use extension field if required.
 
         extrarand => 0
             The extra bytes of randomness to add to the token in addition to
@@ -63,31 +68,59 @@ DESCRIPTION
         Any additional parameters are interpreted the same way as arguments
         to "new".
 
-    $prefix = $cipher->verify ($token [, param => value...]))
-        Checks the given token and returns true if the token has the minimum
-        number of prefix bits, or false otherwise. The value returned is
-        actually the number of collisions, so to find the number of
-        collisions bits specify "collisions => 0".
+    $prefix = $cipher->verify ($token)
+        Version 0: Checks the given token and returns the number of
+        collision bits.
+
+        Version 1: Returns 0 if stated value is more than the computed
+        collision value, otherwise returns the stated stamp value.
 
         Any additional parameters are interpreted the same way as arguments
         to "new".
 
+    $version = $cipher->version ($token)
+        Returns the version of the stamp (currently 0 or 1).
+
     $resource = $cipher->resource ($token)
         Returns the resource part, or "undef".
 
-    $tstamp = $ciper->timestamp ($token)
-        Returns the timestamp part (in the same format as perl's "time"), or
+    $tstamp = $cipher->timestamp ($token)
+        Returns the timestamp part (in the same format as perls "time"), or
         "undef".
 
-SEE ALSO
-    <http://www.hashcash.org>.
+    $extension = $cipher->extension ($token [,$name [,$var]])
+        For Version 1 stamps returns the extension part; for Version 0
+        stamps returns undef. In a scalar context returns the extension
+        string, in array context returns associative array containing
+        extensions as keys and their values as the corresponding value. If
+        the optional name argument is given, returns info but about that
+        extension (ie decodes the options of that extension if called in
+        array context); finally if the optional var argument also is given
+        reports just the (scalar) value of that variable in the named
+        extension.
+
+        Note it is valid for an extension to exist (the key exists in the
+        associative array) but to have undefined value, this corresponds to
+        a boolean option without a value. Like "noreply;foo=bar" has two
+        extensions, noreply and foo; noreply has no associated value, so the
+        method extension would parse such a stamp into an associative array
+        containing key "noreply" with an undefined value; and key "foo"
+        containing associated value "bar".
 
 BUGS
-     * There is a y2k+100 problem, as I always assume the same as Time::Local.
-       This is a problem with the hashcash specification, which specifies
-       years as 2 digits :(
+     * There is a y2k+100 problem, as I always assume the same as
+       Time::Local.  This is a problem with the hashcash specification,
+       which specifies years as 2 digits :( Though it hardly matters --
+       after 100 years of Moore's law a 20 bit stamp will be tiny and not
+       worth storing.
+
+     * extension method could be more efficient (it does not cache its
+       parsed results so if used in a loop reparses on each call)
 
 AUTHOR
      Marc Lehmann <schmorp@schmorp.de>
      http://home.schmorp.de
+
+     Adam Back <adam@cypherspace.org> added version 1 support
+     http://www.cypherspace.org/adam/
 
